@@ -157,15 +157,19 @@ int init() {
 
 	hr = service->CreateSurface(
 		4096,
-		4096,
+		2048,
 		2 - 1,
-		//(D3DFORMAT)MAKEFOURCC('N', 'V', '1', '2'),
-		D3DFMT_A8R8G8B8,
+		(D3DFORMAT)MAKEFOURCC('N', 'V', '1', '2'),
+		//D3DFMT_A8R8G8B8,
 		D3DPOOL_DEFAULT,
 		0,
 		DXVA2_VideoDecoderRenderTarget,
 		d3d9Surfaces.data(),
 		NULL);
+	if (FAILED(hr)) {
+		std::cout << "CreateSurface " << hr << std::endl;
+		return 1;
+	}
 
 	hr = d3d9Device->QueryInterface(IID_PPV_ARGS(&d3dOn12));
 	if (FAILED(hr)) {
@@ -243,6 +247,16 @@ int copy(IDirect3DSurface9* d3d9Dst, IDirect3DSurface9* d3d9Src) {
 		return 1;
 	}
 
+	ID3D12Pageable* p[] = { d3d12Dst, d3d12Src };
+	hr = d3d12->MakeResident(2, p);
+	if (FAILED(hr)) {
+		std::cout << "MakeResident failed " << hr << std::endl;
+		return 1;
+	}
+
+	auto sdesc = d3d12Src->GetDesc();
+	auto ddesc = d3d12Dst->GetDesc();
+
 	hr = commandAllocator->Reset();
 	if (FAILED(hr)) {
 		std::cout << "m_commandAllocator->Reset failed " << hr << std::endl;
@@ -254,12 +268,27 @@ int copy(IDirect3DSurface9* d3d9Dst, IDirect3DSurface9* d3d9Src) {
 		std::cout << "commandList->Reset failed " << hr << std::endl;
 		return 1;
 	}
-
+#if 0
 	commandList->CopyResource(d3d12Dst, d3d12Src);
 	if (FAILED(hr)) {
 		std::cout << "commandList->CopyResource failed " << hr << std::endl;
 		return 1;
 	}
+#else
+	D3D12_TEXTURE_COPY_LOCATION srcLocation{};
+	D3D12_TEXTURE_COPY_LOCATION dstLocation{};
+
+	srcLocation.pResource = d3d12Src;
+	srcLocation.SubresourceIndex = 0;
+	srcLocation.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+
+	dstLocation.pResource = d3d12Dst;
+	dstLocation.SubresourceIndex = 1;
+	dstLocation.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+
+	commandList->CopyTextureRegion(&dstLocation, 0, 0, 0, &srcLocation, nullptr);
+
+#endif
 
 	hr = commandList->Close();
 	if (FAILED(hr)) {
@@ -315,6 +344,10 @@ int copy(IDirect3DSurface9* d3d9Dst, IDirect3DSurface9* d3d9Src) {
 
 int main(int argc, char *argv[])
 {
+	CComPtr<ID3D12Debug> debugController;
+	if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debugController))))
+	    debugController->EnableDebugLayer();
+
 	if (init()) {
 		std::cout << "Init failed " << std::endl;
 		return -1;
