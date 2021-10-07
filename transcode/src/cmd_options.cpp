@@ -32,15 +32,6 @@ void ParseOptions(int argc, char* argv[], CmdOptions* cmd_options)
 
     if (i < argc) {
         if (strlen(argv[i]) < MSDK_MAX_PATH) {
-            msdk_strcopy(cmd_options->values.SourceName, argv[i]);
-        } else {
-            printf("error: source file name is too long\n");
-            exit(-1);
-        }
-        ++i;
-    }
-    if (i < argc) {
-        if (strlen(argv[i]) < MSDK_MAX_PATH) {
             msdk_strcopy(cmd_options->values.SinkName, argv[i]);
         } else {
             printf("error: destination file name is too long\n");

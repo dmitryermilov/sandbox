@@ -23,6 +23,29 @@
 #include "common_utils.h"
 #include "cmd_options.h"
 
+mfxStatus ReadStream(mfxBitstream* bs, FILE* f)
+{
+    fseek(f, 0, SEEK_END);
+    mfxU32 fileSize = ftell(f);
+
+    if (bs->MaxLength < fileSize)
+        return MFX_ERR_NOT_ENOUGH_BUFFER;
+
+    bs->DataOffset = 0;
+    bs->DataLength = fileSize;
+    fseek(f, 0, SEEK_SET);
+    mfxU32 nBytesRead = (mfxU32)fread(bs->Data, 1, fileSize, f);
+
+    if (0 == nBytesRead)
+    {
+        return MFX_ERR_MORE_DATA;
+    }
+
+    bs->DataLength = nBytesRead;
+    bs->DataOffset = 0;
+    return MFX_ERR_NONE;
+}
+#pragma warning (disable : 4996)  // for fopen
 int main(int argc, char** argv)
 {
     mfxStatus sts = MFX_ERR_NONE;
@@ -30,11 +53,12 @@ int main(int argc, char** argv)
    // here we parse options
     ParseOptions(argc, argv, &options);
 
-    // Open input H.264 elementary stream (ES) file
-    fileUniPtr fSource(OpenFile(options.values.SourceName, "rb"), &CloseFile);
-    MSDK_CHECK_POINTER(fSource, MFX_ERR_NULL_PTR);
+    std::string data_location = "C:\\Data\\20210311_174028"; // 1 - CHANGE THIS to required data folder
+    std::string img_file_format = "img%04d_dev%02d_cam%02d.jpg";
+    char str_src_buf[1000];
+    int numFrameSets = 248;
 
-    // Create output elementary stream (ES) H.264 file
+    // Create output elementary stream
     fileUniPtr fSink(nullptr, &CloseFile);
     fSink.reset(OpenFile(options.values.SinkName, "wb"));
     MSDK_CHECK_POINTER(fSink, MFX_ERR_NULL_PTR);
@@ -42,12 +66,10 @@ int main(int argc, char** argv)
     Transcoder transcoder;
 
     // Prepare buffers for decoder/encoder
-    mfxBitstream mfxBS;
-    memset(&mfxBS, 0, sizeof(mfxBS));
-    mfxBS.MaxLength = 1024 * 1024;
+    mfxBitstream mfxBS = {};
+    mfxBS.MaxLength = 1024 * 1024 * 30;
     std::vector<mfxU8> bstData(mfxBS.MaxLength);
     mfxBS.Data = bstData.data();
-
     mfxBitstream encodedBS = {};
     encodedBS.MaxLength = 1024 * 1024 * 10;
     std::vector<mfxU8> encodedData(encodedBS.MaxLength);
@@ -57,14 +79,20 @@ int main(int argc, char** argv)
     mfxTime tStart, tEnd;
     mfxGetTime(&tStart);
 
-    auto readerSts = MFX_ERR_NONE;
-    while (readerSts != MFX_ERR_MORE_DATA || mfxBS.DataLength) // process while there's data from the reader
+    const int d = 0;
+    const int c = 0;
+
+    for (int i = 0; i < numFrameSets; ++i) // process while there's data from the reader
     {
-        if (readerSts != MFX_ERR_MORE_DATA)
-        {
-            readerSts = ReadBitStreamData(&mfxBS, fSource.get());
-        }
- 
+        FILE* source = nullptr;
+        std::string format = data_location + "\\" + img_file_format;
+        snprintf(str_src_buf, sizeof(str_src_buf), format.c_str(), i + 1, d, c);
+        source = fopen(str_src_buf, "rb");
+        sts = ReadStream(&mfxBS, source);
+        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+        mfxBS.DataFlag = MFX_BITSTREAM_COMPLETE_FRAME;
+        fclose(source);
+
         auto output = transcoder.Process(&mfxBS, encodedBS);
 
         if (output)
