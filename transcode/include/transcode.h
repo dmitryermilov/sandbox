@@ -197,7 +197,7 @@ private:
     void InternalInit(mfxBitstream& bs)
     {
         _decParams.AsyncDepth = 1;
-        _decParams.mfx.CodecId = MFX_CODEC_AVC;
+        _decParams.mfx.CodecId = MFX_CODEC_JPEG;
         _decParams.IOPattern = MFX_IOPATTERN_OUT_VIDEO_MEMORY;
 
         auto sts = _decode->DecodeHeader(&bs, &_decParams);
