@@ -212,9 +212,10 @@ private:
 
         _encParams.AsyncDepth = 1;
         _encParams.mfx.LowPower = MFX_CODINGOPTION_ON;
-        _encParams.mfx.CodecId = MFX_CODEC_AVC;
-        _encParams.mfx.TargetUsage = MFX_TARGETUSAGE_BALANCED;
-        _encParams.mfx.TargetKbps = 4000;
+        _encParams.mfx.CodecId = MFX_CODEC_HEVC;
+        _encParams.mfx.TargetUsage = MFX_TARGETUSAGE_BEST_SPEED;
+        _encParams.mfx.TargetKbps = 3000;
+        _encParams.mfx.GopPicSize = 1;
         _encParams.mfx.GopRefDist = 1;
         _encParams.mfx.RateControlMethod = MFX_RATECONTROL_VBR;
         _encParams.mfx.FrameInfo.FrameRateExtN = 30;
