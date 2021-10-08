@@ -5,18 +5,19 @@ set(PROJECT_NAME demo)
 ################################################################################
 set(Headers
 	"include/transcode.h"
-    "include/common_directx11.h"
+	"include/device.h"
+	"include/base_allocator.h"
+	"include/d3d11_allocator.h"
     "include/common_utils.h"
-	"include/windows_defs.h"
 	"include/cmd_options.h"
 )
 source_group("Headers" FILES ${Headers})
 
 set(Sources
     "src/demo.cpp"
-	"src/common_directx11.cpp"
+	"src/base_allocator.cpp"
+	"src/d3d11_allocator.cpp"
 	"src/common_utils.cpp"
-	"src/common_utils_windows.cpp"
 	"src/cmd_options.cpp"
 )
 source_group("Sources" FILES ${Sources})

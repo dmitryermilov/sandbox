@@ -18,9 +18,9 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+#include <cstring>
+#include <stdlib.h>
 #include "cmd_options.h"
-
-#include "windows_defs.h"
 
 void ParseOptions(int argc, char* argv[], CmdOptions* cmd_options)
 {
@@ -31,8 +31,8 @@ void ParseOptions(int argc, char* argv[], CmdOptions* cmd_options)
     }
 
     if (i < argc) {
-        if (strlen(argv[i]) < MSDK_MAX_PATH) {
-            msdk_strcopy(cmd_options->values.SinkName, argv[i]);
+        if (std::strlen(argv[i]) < MSDK_MAX_PATH) {
+            strncpy_s(cmd_options->values.SinkName, argv[i], std::strlen(cmd_options->values.SinkName));
         } else {
             printf("error: destination file name is too long\n");
             exit(-1);

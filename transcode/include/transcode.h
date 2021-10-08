@@ -24,24 +24,50 @@
 #include "mfxvp8.h"
 #include "mfxplugin.h"
 
+#include "d3d11_allocator.h"
 #include "common_utils.h"
 
 class Transcoder
 {
 public:
-    Transcoder()
+    Transcoder(std::unique_ptr<IHWDevice> & device)
     {
         mfxIMPL impl = MFX_IMPL_HARDWARE;
         mfxVersion ver = { {0, 1} };
 
         _session.reset(new MFXVideoSession());
 
-        auto sts = Initialize(impl, ver, _session.get(), &_allocator);
+        impl |= MFX_IMPL_VIA_D3D11;
+
+        // Initialize Intel Media SDK Session
+        auto sts = _session->Init(impl, &ver);
         if (sts != MFX_ERR_NONE)
-            throw std::runtime_error("Initialize failed");
+            throw std::runtime_error("Session initialization failed");
+
+        mfxHDL deviceHandle;
+        sts = device->GetHandle(MFX_HANDLE_D3D11_DEVICE, &deviceHandle);
+        if (sts != MFX_ERR_NONE)
+            throw std::runtime_error("Device GetHandle failed");
+
+        sts = _session->SetHandle(MFX_HANDLE_D3D11_DEVICE, deviceHandle);
+        if (sts != MFX_ERR_NONE)
+            throw std::runtime_error("Session SetHandle failed");
+
+        _allocator.reset(new D3D11FrameAllocator);
+
+        D3D11AllocatorParams allocParams = {};
+        allocParams.pDevice = reinterpret_cast<ID3D11Device*>(deviceHandle);
+
+        sts = _allocator->Init(&allocParams);
+        if (sts != MFX_ERR_NONE)
+            throw std::runtime_error("Allocator initialization failed");
+
+        sts = _session->SetFrameAllocator(_allocator.get());
+        if (sts != MFX_ERR_NONE)
+            throw std::runtime_error("SetFrameAllocator failed");
 
         // Create Media SDK decoder & encoder
-        _decode.reset(new MFXVideoDECODE(_session->operator mfxSession() ));
+        _decode.reset(new MFXVideoDECODE(_session->operator mfxSession()));
         _encode.reset(new MFXVideoENCODE(_session->operator mfxSession()));
     }
     virtual ~Transcoder()
@@ -50,9 +76,7 @@ public:
         _decode.reset(nullptr);
         _session.reset(nullptr);
 
-        _allocator.Free(_allocator.pthis, &_allocResponse);
-
-        Release();
+        _allocator->Free(_allocator->pthis, &_allocResponse);
     }
 
     bool IsDrainCompleted()
@@ -84,7 +108,7 @@ public:
                 sts = _decode->DecodeFrameAsync(bs, &_surfaces[idx], &out, &syncp);
 
                 if (MFX_WRN_DEVICE_BUSY == sts) {
-                    MSDK_SLEEP(1);
+                    Sleep(1);
                     continue;
                 }
 
@@ -132,7 +156,7 @@ public:
 
                 if (MFX_WRN_DEVICE_BUSY == sts)    // repeat the call if warning and no output
                 {
-                    MSDK_SLEEP(1);  // wait if device is busy
+                    Sleep(1);  // wait if device is busy
                     continue;
                 }
                 else if (MFX_ERR_NONE < sts && syncp) {
@@ -180,7 +204,7 @@ public:
 private:
     std::unique_ptr <MFXVideoSession> _session = {};
 
-    mfxFrameAllocator _allocator = {};
+    std::unique_ptr <BaseFrameAllocator> _allocator = {};
     mfxFrameAllocResponse _allocResponse = {};
     std::vector<mfxFrameSurface1> _surfaces;
 
@@ -243,7 +267,7 @@ private:
         decRequest.NumFrameSuggested = decRequest.NumFrameSuggested + encRequest.NumFrameSuggested;
 
         // Allocate required surfaces for decoder and encoder
-        sts = _allocator.Alloc(_allocator.pthis, &decRequest, &_allocResponse);
+        sts = _allocator->Alloc(_allocator->pthis, &decRequest, &_allocResponse);
         if (sts != MFX_ERR_NONE)
             throw std::runtime_error("Alloc failed");
 

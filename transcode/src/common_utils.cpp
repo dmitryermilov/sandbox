@@ -19,92 +19,21 @@
 // SOFTWARE.
 
 
-#include "common_utils.h"
 #include <algorithm>
-
 #include <intrin.h>
 #include <array>
 #include <vector>
+#include "mfxvideo++.h"
+#include "common_utils.h"
 
 // =================================================================
 // Utility functions, not directly tied to Intel Media SDK functionality
 //
 
-void PrintErrString(int err,const char* filestr,int line)
-{
-    switch (err) {
-    case   0:
-        printf("\n No error.\n");
-        break;
-    case  -1:
-        printf("\n Unknown error: %s %d\n",filestr,line);
-        break;
-    case  -2:
-        printf("\n Null pointer.  Check filename/path + permissions? %s %d\n",filestr,line);
-        break;
-    case  -3:
-        printf("\n Unsupported feature/library load error. %s %d\n",filestr,line);
-        break;
-    case  -4:
-        printf("\n Could not allocate memory. %s %d\n",filestr,line);
-        break;
-    case  -5:
-        printf("\n Insufficient IO buffers. %s %d\n",filestr,line);
-        break;
-    case  -6:
-        printf("\n Invalid handle. %s %d\n",filestr,line);
-        break;
-    case  -7:
-        printf("\n Memory lock failure. %s %d\n",filestr,line);
-        break;
-    case  -8:
-        printf("\n Function called before initialization. %s %d\n",filestr,line);
-        break;
-    case  -9:
-        printf("\n Specified object not found. %s %d\n",filestr,line);
-        break;
-    case -10:
-        printf("\n More input data expected. %s %d\n",filestr,line);
-        break;
-    case -11:
-        printf("\n More output surfaces expected. %s %d\n",filestr,line);
-        break;
-    case -12:
-        printf("\n Operation aborted. %s %d\n",filestr,line);
-        break;
-    case -13:
-        printf("\n HW device lost. %s %d\n",filestr,line);
-        break;
-    case -14:
-        printf("\n Incompatible video parameters. %s %d\n",filestr,line);
-        break;
-    case -15:
-        printf("\n Invalid video parameters. %s %d\n",filestr,line);
-        break;
-    case -16:
-        printf("\n Undefined behavior. %s %d\n",filestr,line);
-        break;
-    case -17:
-        printf("\n Device operation failure. %s %d\n",filestr,line);
-        break;
-    case -18:
-        printf("\n More bitstream data expected. %s %d\n",filestr,line);
-        break;
-    case -19:
-        printf("\n Incompatible audio parameters. %s %d\n",filestr,line);
-        break;
-    case -20:
-        printf("\n Invalid audio parameters. %s %d\n",filestr,line);
-        break;
-    default:
-        printf("\nError code %d,\t%s\t%d\n\n", err, filestr, line);
-    }
-}
-
 FILE* OpenFile(const char* fileName, const char* mode)
 {
     FILE* openFile = nullptr;
-    MSDK_FOPEN(openFile, fileName, mode);
+    fopen_s(&openFile, fileName, mode);
     return openFile;
 }
 
@@ -114,7 +43,7 @@ void CloseFile(FILE* fHdl)
         fclose(fHdl);
 }
 
-mfxStatus WriteBitStreamFrame(mfxBitstream* pMfxBitstream, FILE* fSink)
+mfxStatus WriteBitStreamData(mfxBitstream* pMfxBitstream, FILE* fSink)
 {
     if (!pMfxBitstream)
        return MFX_ERR_NULL_PTR;
@@ -160,26 +89,6 @@ int GetFreeSurfaceIndex(const std::vector<mfxFrameSurface1>& pSurfacesPool)
                     });
 
      return static_cast<int>((it == pSurfacesPool.end()) ? MFX_ERR_NOT_FOUND : std::distance(pSurfacesPool.begin(), it));
-}
-
-char mfxFrameTypeString(mfxU16 FrameType)
-{
-    mfxU8 FrameTmp = FrameType & 0xF;
-    char FrameTypeOut;
-    switch (FrameTmp) {
-    case MFX_FRAMETYPE_I:
-        FrameTypeOut = 'I';
-        break;
-    case MFX_FRAMETYPE_P:
-        FrameTypeOut = 'P';
-        break;
-    case MFX_FRAMETYPE_B:
-        FrameTypeOut = 'B';
-        break;
-    default:
-        FrameTypeOut = '*';
-    }
-    return FrameTypeOut;
 }
 
 #if defined(_WIN32) || defined(_WIN64)

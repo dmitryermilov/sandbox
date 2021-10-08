@@ -19,32 +19,59 @@
 // SOFTWARE.
 
 #include <stdexcept>
+#include "device.h"
 #include "transcode.h"
 #include "common_utils.h"
 #include "cmd_options.h"
 
-mfxStatus ReadStream(mfxBitstream* bs, FILE* f)
+class mfxBitstreamWrapper : public mfxBitstream
 {
-    fseek(f, 0, SEEK_END);
-    mfxU32 fileSize = ftell(f);
+    typedef mfxBitstream base;
+public:
+    mfxBitstreamWrapper()
+        : base()
+    {}
 
-    if (bs->MaxLength < fileSize)
-        return MFX_ERR_NOT_ENOUGH_BUFFER;
-
-    bs->DataOffset = 0;
-    bs->DataLength = fileSize;
-    fseek(f, 0, SEEK_SET);
-    mfxU32 nBytesRead = (mfxU32)fread(bs->Data, 1, fileSize, f);
-
-    if (0 == nBytesRead)
+    mfxBitstreamWrapper(mfxU32 n_bytes)
+        : base()
     {
-        return MFX_ERR_MORE_DATA;
+        Extend(n_bytes);
     }
 
-    bs->DataLength = nBytesRead;
-    bs->DataOffset = 0;
-    return MFX_ERR_NONE;
-}
+    mfxBitstreamWrapper(const mfxBitstreamWrapper& bs_wrapper)
+        : base(bs_wrapper)
+        , m_data(bs_wrapper.m_data)
+    {
+        Data = m_data.data();
+    }
+
+    mfxBitstreamWrapper& operator=(mfxBitstreamWrapper const& bs_wrapper)
+    {
+        mfxBitstreamWrapper tmp(bs_wrapper);
+
+        *this = std::move(tmp);
+
+        return *this;
+    }
+
+    mfxBitstreamWrapper(mfxBitstreamWrapper&& bs_wrapper) = default;
+    mfxBitstreamWrapper& operator= (mfxBitstreamWrapper&& bs_wrapper) = default;
+    ~mfxBitstreamWrapper() = default;
+
+    void Extend(mfxU32 n_bytes)
+    {
+        if (MaxLength >= n_bytes)
+            return;
+
+        m_data.resize(n_bytes);
+
+        Data = m_data.data();
+        MaxLength = n_bytes;
+    }
+private:
+    std::vector<mfxU8> m_data;
+};
+
 #pragma warning (disable : 4996)  // for fopen
 int main(int argc, char** argv)
 {
@@ -63,21 +90,18 @@ int main(int argc, char** argv)
     fSink.reset(OpenFile(options.values.SinkName, "wb"));
     MSDK_CHECK_POINTER(fSink, MFX_ERR_NULL_PTR);
  
-    Transcoder transcoder;
+    const size_t adapterNum = 0;
+    std::unique_ptr<IHWDevice> device(new D3D11Device(adapterNum)); //let's have one device for all sessions (but actually we can create separete device per session)
+    Transcoder transcoder(device);
 
     // Prepare buffers for decoder/encoder
-    mfxBitstream mfxBS = {};
-    mfxBS.MaxLength = 1024 * 1024 * 30;
-    std::vector<mfxU8> bstData(mfxBS.MaxLength);
-    mfxBS.Data = bstData.data();
-    mfxBitstream encodedBS = {};
-    encodedBS.MaxLength = 1024 * 1024 * 10;
-    std::vector<mfxU8> encodedData(encodedBS.MaxLength);
-    encodedBS.Data = encodedData.data();
+    mfxBitstreamWrapper mfxBS;
+
+    mfxBitstreamWrapper encodedBS;
+    encodedBS.Extend(1024 * 1024 * 10);
 
     uint32_t nFrame = 0;
-    mfxTime tStart, tEnd;
-    mfxGetTime(&tStart);
+    auto start = std::chrono::high_resolution_clock::now();
 
     const int d = 0;
     const int c = 0;
@@ -88,7 +112,12 @@ int main(int argc, char** argv)
         std::string format = data_location + "\\" + img_file_format;
         snprintf(str_src_buf, sizeof(str_src_buf), format.c_str(), i + 1, d, c);
         source = fopen(str_src_buf, "rb");
-        sts = ReadStream(&mfxBS, source);
+        fseek(source, 0, SEEK_END);
+        auto fsize = ftell(source);
+        mfxBS.Extend(fsize);
+        fseek(source, 0, SEEK_SET);
+
+        sts = ReadBitStreamData(&mfxBS, source);
         MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
         mfxBS.DataFlag = MFX_BITSTREAM_COMPLETE_FRAME;
         fclose(source);
@@ -97,7 +126,7 @@ int main(int argc, char** argv)
 
         if (output)
         {
-            sts = WriteBitStreamFrame(output, fSink.get());
+            sts = WriteBitStreamData(output, fSink.get());
             if (sts != MFX_ERR_NONE)
                 throw std::runtime_error("WriteBitStreamFrame failed");
 
@@ -113,7 +142,7 @@ int main(int argc, char** argv)
 
         if (output)
         {
-            sts = WriteBitStreamFrame(output, fSink.get());
+            sts = WriteBitStreamData(output, fSink.get());
             if (sts != MFX_ERR_NONE)
                 throw std::runtime_error("WriteBitStreamFrame failed");
 
@@ -122,10 +151,11 @@ int main(int argc, char** argv)
         }
     }
 
-    mfxGetTime(&tEnd);
-    double elapsed = TimeDiffMsec(tEnd, tStart) / 1000;
-    double fps = ((double)nFrame / elapsed);
-    printf("\nExecution time: %3.2f s (%3.2f fps)\n", elapsed, fps);
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);
+    double delta = std::chrono::duration<double, std::milli>(duration).count();
+
+    double fps = nFrame / (delta / 1000.);
+    printf("\nExecution time: %3.2f s (%3.2f fps)\n", delta / 1000, fps);
 
     return 0;
 }
