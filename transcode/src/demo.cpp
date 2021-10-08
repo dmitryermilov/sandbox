@@ -72,85 +72,135 @@ private:
     std::vector<mfxU8> m_data;
 };
 
+#define NUM_DEVICES 3
+#define NUM_CAMS 5
+
 #pragma warning (disable : 4996)  // for fopen
-int main(int argc, char** argv)
+int main(int , char** )
 {
     mfxStatus sts = MFX_ERR_NONE;
-    CmdOptions options;
    // here we parse options
-    ParseOptions(argc, argv, &options);
 
     std::string data_location = "C:\\Data\\20210311_174028"; // 1 - CHANGE THIS to required data folder
     std::string img_file_format = "img%04d_dev%02d_cam%02d.jpg";
     char str_src_buf[1000];
     int numFrameSets = 248;
 
-    // Create output elementary stream
-    fileUniPtr fSink(nullptr, &CloseFile);
-    fSink.reset(OpenFile(options.values.SinkName, "wb"));
-    MSDK_CHECK_POINTER(fSink, MFX_ERR_NULL_PTR);
- 
     const size_t adapterNum = 0;
     std::unique_ptr<IHWDevice> device(new D3D11Device(adapterNum)); //let's have one device for all sessions (but actually we can create separete device per session)
-    Transcoder transcoder(device);
 
-    // Prepare buffers for decoder/encoder
-    mfxBitstreamWrapper mfxBS;
+    struct Pipeline
+    {
+        Pipeline(std::unique_ptr<IHWDevice>& device)
+        {
+            transcoder.reset(new Transcoder(device));
+            outBS.Extend(1024 * 1024 * 10);
+        }
 
-    mfxBitstreamWrapper encodedBS;
-    encodedBS.Extend(1024 * 1024 * 10);
+        std::unique_ptr<Transcoder> transcoder;
+        mfxBitstreamWrapper inBS = {};
+        mfxBitstreamWrapper outBS = {};
+    };
+
+    std::vector<std::unique_ptr<Pipeline>> pipelines;
+    for (auto i = 0; i < NUM_DEVICES * NUM_CAMS; pipelines.emplace_back(new Pipeline((device))), ++i);
+    std::vector<std::thread> threads(NUM_DEVICES* NUM_CAMS);
 
     uint32_t nFrame = 0;
     auto start = std::chrono::high_resolution_clock::now();
 
-    const int d = 0;
-    const int c = 0;
-
-    for (int i = 0; i < numFrameSets; ++i) // process while there's data from the reader
+    for (int d = 0; d < NUM_DEVICES; d++)
     {
-        FILE* source = nullptr;
-        std::string format = data_location + "\\" + img_file_format;
-        snprintf(str_src_buf, sizeof(str_src_buf), format.c_str(), i + 1, d, c);
-        source = fopen(str_src_buf, "rb");
-        fseek(source, 0, SEEK_END);
-        auto fsize = ftell(source);
-        mfxBS.Extend(fsize);
-        fseek(source, 0, SEEK_SET);
-
-        sts = ReadBitStreamData(&mfxBS, source);
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
-        mfxBS.DataFlag = MFX_BITSTREAM_COMPLETE_FRAME;
-        fclose(source);
-
-        auto output = transcoder.Process(&mfxBS, encodedBS);
-
-        if (output)
+        for (int c = 0; c < NUM_CAMS; ++c)
         {
-            sts = WriteBitStreamData(output, fSink.get());
-            if (sts != MFX_ERR_NONE)
-                throw std::runtime_error("WriteBitStreamFrame failed");
+            auto f = [&](const mfxU32 d, const mfxU32 c) -> mfxStatus 
+            {
+                const auto pipeNum = d * NUM_CAMS + c;
+                auto& inBS = pipelines[pipeNum]->inBS;
+                auto& outBS = pipelines[pipeNum]->outBS;
+                auto& transcoder = pipelines[pipeNum]->transcoder;
 
-            printf("Frame number: %d\r", nFrame++);
-            fflush(stdout);
+                std::string vdo_file_format = "hevc_cam%02d.h265";
+                std::string format = data_location + "\\" + vdo_file_format;
+                char str_dst_buf[1000];
+                snprintf(str_dst_buf, sizeof(str_dst_buf), format.c_str(), pipeNum);
+                FILE* dst_file = fopen(str_dst_buf, "wb");
+                for (int i = 0; i < numFrameSets; ++i)
+                {
+                    mfxBitstream* output = nullptr;
+
+                    FILE* source = nullptr;
+                    format = data_location + "\\" + img_file_format;
+                    snprintf(str_src_buf, sizeof(str_src_buf), format.c_str(), i + 1, d, c);
+                    source = fopen(str_src_buf, "rb");
+                    fseek(source, 0, SEEK_END);
+                    auto fsize = ftell(source);
+                    inBS.Extend(fsize);
+                    inBS.Extend(fsize);
+                    fseek(source, 0, SEEK_SET);
+
+                    sts = ReadBitStreamData(&inBS, source);
+                    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+                    inBS.DataFlag = MFX_BITSTREAM_COMPLETE_FRAME;
+                    fclose(source);
+
+                    output = transcoder->Process(&inBS, outBS);
+                    
+                    if (output)
+                    {
+                        sts = WriteBitStreamData(output, dst_file);
+                        if (sts != MFX_ERR_NONE)
+                            throw std::runtime_error("WriteBitStreamFrame failed");
+
+                        printf("Frame number: %d\r", nFrame++);
+                        fflush(stdout);
+                    }
+
+                }
+
+                fclose(dst_file);
+                return MFX_ERR_NONE;
+            };
+
+            const auto pipeNum = d * NUM_CAMS + c;
+            threads[pipeNum] = std::thread(f, d, c);
         }
     }
 
+    for (int d = 0; d < NUM_DEVICES; d++)
+    {
+        for (int c = 0; c < NUM_CAMS; ++c)
+        {
+            const auto pipeNum = d * NUM_CAMS + c;
+            threads[pipeNum].join();
+        }
+    }
+#if 0
     // drain part (decoder/encoder may cache a few frames during processing, when input EOS reached, need to drain cached frames from decoder/encoder)
-    while (!transcoder.IsDrainCompleted())
+    for (int d = 0; d < NUM_DEVICES; ++d)
     {
-        auto output = transcoder.Process(nullptr, encodedBS);
-
-        if (output)
+        for (int c = 0; c < NUM_CAMS; ++c)
         {
-            sts = WriteBitStreamData(output, fSink.get());
-            if (sts != MFX_ERR_NONE)
-                throw std::runtime_error("WriteBitStreamFrame failed");
+            const auto pipeNum = d * NUM_CAMS + c;
+            auto& outBS = pipelines[pipeNum]->outBS;
+            auto& transcoder = pipelines[pipeNum]->transcoder;
+            while (!transcoder->IsDrainCompleted())
+            {
+                auto output = transcoder->Process(nullptr, outBS);
 
-            printf("Frame number: %d\r", nFrame++);
-            fflush(stdout);
+                if (output)
+                {
+                    sts = WriteBitStreamData(output, fSink.get());
+                    if (sts != MFX_ERR_NONE)
+                        throw std::runtime_error("WriteBitStreamFrame failed");
+
+                    printf("Frame number: %d\r", nFrame++);
+                    fflush(stdout);
+                }
+            }
         }
     }
-
+#endif
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);
     double delta = std::chrono::duration<double, std::milli>(duration).count();
 
