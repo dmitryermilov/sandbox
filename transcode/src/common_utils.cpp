@@ -23,6 +23,7 @@
 #include <intrin.h>
 #include <array>
 #include <vector>
+#include <memory>
 #include "mfxvideo++.h"
 #include "common_utils.h"
 

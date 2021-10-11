@@ -235,11 +235,11 @@ private:
             throw std::runtime_error("decode QueryIOSurf failed");
 
         _encParams.AsyncDepth = 1;
-        _encParams.mfx.LowPower = MFX_CODINGOPTION_ON;
+        _encParams.mfx.LowPower = MFX_CODINGOPTION_UNKNOWN;
         _encParams.mfx.CodecId = MFX_CODEC_HEVC;
         _encParams.mfx.TargetUsage = MFX_TARGETUSAGE_BEST_SPEED;
         _encParams.mfx.TargetKbps = 3000;
-        _encParams.mfx.GopPicSize = 1;
+        _encParams.mfx.GopPicSize = 15;
         _encParams.mfx.GopRefDist = 1;
         _encParams.mfx.RateControlMethod = MFX_RATECONTROL_VBR;
         _encParams.mfx.FrameInfo.FrameRateExtN = 30;
@@ -256,6 +256,21 @@ private:
         _encParams.mfx.FrameInfo.Width = MSDK_ALIGN16(_encParams.mfx.FrameInfo.CropW);
         _encParams.mfx.FrameInfo.Height = (MFX_PICSTRUCT_PROGRESSIVE == _encParams.mfx.FrameInfo.PicStruct) ? MSDK_ALIGN16(_encParams.mfx.FrameInfo.CropH) : MSDK_ALIGN32(_encParams.mfx.FrameInfo.CropH);
         _encParams.IOPattern = MFX_IOPATTERN_IN_VIDEO_MEMORY;
+
+        sts = _encode->Query(&_encParams, &_encParams);
+        if (sts < MFX_ERR_NONE)
+            throw std::runtime_error("Encode Query failed");
+#if 1
+        _encParams.mfx.LowPower = MFX_CODINGOPTION_ON;
+        sts = _encode->Query(&_encParams, &_encParams);
+        if (sts < MFX_ERR_NONE)
+        {
+            _encParams.mfx.LowPower = MFX_CODINGOPTION_OFF;
+            sts = _encode->Query(&_encParams, &_encParams);
+            if (sts < MFX_ERR_NONE)
+                throw std::runtime_error("encode Query failed");
+        }
+#endif
 
         // Query number required surfaces for encoder
         mfxFrameAllocRequest encRequest = {};
