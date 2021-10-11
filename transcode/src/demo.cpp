@@ -81,10 +81,9 @@ int main(int , char** )
     mfxStatus sts = MFX_ERR_NONE;
    // here we parse options
 
-    std::string data_location = "C:\\Data\\20210311_174028"; // 1 - CHANGE THIS to required data folder
-    std::string img_file_format = "img%04d_dev%02d_cam%02d.jpg";
-    char str_src_buf[1000];
-    int numFrameSets = 248;
+    const std::string data_location = "C:\\Data\\20210311_174028"; // 1 - CHANGE THIS to required data folder
+    const std::string img_file_format = "img%04d_dev%02d_cam%02d.jpg";
+    const int numFrameSets = 248;
 
     const size_t adapterNum = 0;
     std::unique_ptr<IHWDevice> device(new D3D11Device(adapterNum)); //let's have one device for all sessions (but actually we can create separete device per session)
@@ -120,9 +119,12 @@ int main(int , char** )
                 auto& outBS = pipelines[pipeNum]->outBS;
                 auto& transcoder = pipelines[pipeNum]->transcoder;
 
+                char str_src_buf[1000];
+
+                char str_dst_buf[1000];
                 std::string vdo_file_format = "hevc_cam%02d.h265";
                 std::string format = data_location + "\\" + vdo_file_format;
-                char str_dst_buf[1000];
+
                 snprintf(str_dst_buf, sizeof(str_dst_buf), format.c_str(), pipeNum);
                 FILE* dst_file = fopen(str_dst_buf, "wb");
                 for (int i = 0; i < numFrameSets; ++i)
@@ -135,8 +137,9 @@ int main(int , char** )
                     source = fopen(str_src_buf, "rb");
                     fseek(source, 0, SEEK_END);
                     auto fsize = ftell(source);
+
                     inBS.Extend(fsize);
-                    inBS.Extend(fsize);
+
                     fseek(source, 0, SEEK_SET);
 
                     sts = ReadBitStreamData(&inBS, source);
