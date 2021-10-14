@@ -105,15 +105,14 @@ int main(int , char** )
     for (auto i = 0; i < NUM_DEVICES * NUM_CAMS; pipelines.emplace_back(new Pipeline((device))), ++i);
     std::vector<std::thread> threads(NUM_DEVICES* NUM_CAMS);
 
-    uint32_t nFrame = 0;
-    auto start = std::chrono::high_resolution_clock::now();
-
     for (int d = 0; d < NUM_DEVICES; d++)
     {
         for (int c = 0; c < NUM_CAMS; ++c)
         {
             auto f = [&](const mfxU32 d, const mfxU32 c) -> mfxStatus 
             {
+                auto start = std::chrono::high_resolution_clock::now();
+                uint32_t nFrame = 0;
                 const auto pipeNum = d * NUM_CAMS + c;
                 auto& inBS = pipelines[pipeNum]->inBS;
                 auto& outBS = pipelines[pipeNum]->outBS;
@@ -155,13 +154,17 @@ int main(int , char** )
                         if (sts != MFX_ERR_NONE)
                             throw std::runtime_error("WriteBitStreamFrame failed");
 
-                        printf("Frame number: %d\r", nFrame++);
-                        fflush(stdout);
+                        ++nFrame;
                     }
-
+                    printf(".");
                 }
 
                 fclose(dst_file);
+                auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);
+                double delta = std::chrono::duration<double, std::milli>(duration).count();
+
+                double fps = nFrame / (delta / 1000.);
+                printf("\nExecution time: %3.2f s (%3.2f fps)\n", delta / 1000, fps);
                 return MFX_ERR_NONE;
             };
 
@@ -204,11 +207,5 @@ int main(int , char** )
         }
     }
 #endif
-    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);
-    double delta = std::chrono::duration<double, std::milli>(duration).count();
-
-    double fps = nFrame / (delta / 1000.);
-    printf("\nExecution time: %3.2f s (%3.2f fps)\n", delta / 1000, fps);
-
     return 0;
 }
