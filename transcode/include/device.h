@@ -32,12 +32,15 @@ public:
     virtual ~IHWDevice() {}
     // Get handle can be used for MFX session SetHandle calls
     virtual mfxStatus GetHandle(mfxHandleType type, mfxHDL* pHdl) = 0;
+
+    virtual mfxU32 GetAdapterNum() = 0;
 };
 
 class D3D11Device : public IHWDevice
 {
 public:
-    D3D11Device(mfxU32 nAdapterNum)
+    D3D11Device(mfxU32 nAdapterNum) :
+        m_nAdapterNum(nAdapterNum)
     {
         static D3D_FEATURE_LEVEL FeatureLevels[] = {
             D3D_FEATURE_LEVEL_11_1,
@@ -91,33 +94,20 @@ public:
         }
         return MFX_ERR_UNSUPPORTED;
     }
-protected:
 
+    virtual mfxU32 GetAdapterNum()
+    {
+        return m_nAdapterNum;
+    }
+protected:
+    mfxU32                                  m_nAdapterNum;
     CComPtr<ID3D11Device>                   m_pD3D11Device;
     CComPtr<ID3D11DeviceContext>            m_pD3D11Ctx;
     CComQIPtr<ID3D11VideoDevice>            m_pDX11VideoDevice;
     CComQIPtr<ID3D11VideoContext>           m_pVideoContext;
-    CComPtr<ID3D11VideoProcessorEnumerator> m_VideoProcessorEnum;
 
     CComQIPtr<IDXGIDevice1>                 m_pDXGIDev;
     CComQIPtr<IDXGIAdapter>                 m_pAdapter;
 
     CComPtr<IDXGIFactory2>                  m_pDXGIFactory;
-
-    CComPtr<IDXGISwapChain1>                m_pSwapChain;
-    CComPtr<ID3D11VideoProcessor>           m_pVideoProcessor;
-
-private:
-    CComPtr<ID3D11VideoProcessorInputView>  m_pInputViewLeft;
-    CComPtr<ID3D11VideoProcessorInputView>  m_pInputViewRight;
-    CComPtr<ID3D11VideoProcessorOutputView> m_pOutputView;
-
-    CComPtr<ID3D11Texture2D>                m_pDXGIBackBuffer;
-    CComPtr<ID3D11Texture2D>                m_pTempTexture;
-    CComPtr<IDXGIDisplayControl>            m_pDisplayControl;
-    CComPtr<IDXGIOutput>                    m_pDXGIOutput;
-    mfxU16                                  m_nViews;
-    BOOL                                    m_bDefaultStereoEnabled;
-    BOOL                                    m_bIsA2rgb10;
-    HWND                                    m_HandleWindow;
 };

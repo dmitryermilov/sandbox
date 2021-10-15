@@ -32,7 +32,25 @@ class Transcoder
 public:
     Transcoder(std::unique_ptr<IHWDevice> & device)
     {
-        mfxIMPL impl = MFX_IMPL_HARDWARE;
+        mfxIMPL impl;
+        switch (device->GetAdapterNum())
+        {
+        case 0:
+            impl = MFX_IMPL_HARDWARE;
+            break;
+        case 1:
+            impl = MFX_IMPL_HARDWARE2;
+            break;
+        case 2:
+            impl = MFX_IMPL_HARDWARE3;
+            break;
+        case 3:
+            impl = MFX_IMPL_HARDWARE4;
+            break;
+
+        default:
+            throw std::runtime_error("Unknown adapter");
+        }
         mfxVersion ver = { {0, 1} };
 
         _session.reset(new MFXVideoSession());
@@ -89,7 +107,7 @@ public:
         if (!_initialized)
         {
             if (!inBs)
-                throw std::logic_error("Attempt to train not initialized decoder");
+                throw std::logic_error("Attempt to drain not initialized decoder");
             InternalInit(*inBs);
         }
 
