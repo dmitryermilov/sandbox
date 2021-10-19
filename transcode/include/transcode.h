@@ -210,12 +210,12 @@ public:
             if (nullptr == decodedSurface && !_decodeEOS)
                 return nullptr;
         }
-        
+#if 1
         if (!_encodeEOS)
         {
             return EncodeFrame(decodedSurface, outBs);
         }
-
+#endif
         return nullptr;
     }
 

@@ -79,10 +79,8 @@ private:
 int main(int , char** )
 {
     mfxStatus sts = MFX_ERR_NONE;
-   // here we parse options
 
-    const std::string data_location = "C:\\Data\\20210311_174028"; // 1 - CHANGE THIS to required data folder
-    const std::string img_file_format = "img%04d_dev%02d_cam%02d.jpg";
+    const std::string img_file_name = "LF_13MP_frame0000_cam00.jpg";
     const int numFrameSets = 248;
 
     const size_t adapterNum = 0;
@@ -118,33 +116,31 @@ int main(int , char** )
                 auto& outBS = pipelines[pipeNum]->outBS;
                 auto& transcoder = pipelines[pipeNum]->transcoder;
 
-                char str_src_buf[1000];
-
                 char str_dst_buf[1000];
                 std::string vdo_file_format = "hevc_cam%02d.h265";
-                std::string format = data_location + "\\" + vdo_file_format;
+                std::string format = vdo_file_format;
 
                 snprintf(str_dst_buf, sizeof(str_dst_buf), format.c_str(), pipeNum);
                 FILE* dst_file = fopen(str_dst_buf, "wb");
+
+                FILE* source = fopen(img_file_name.c_str(), "rb");
+                fseek(source, 0, SEEK_END);
+                auto fsize = ftell(source);
+
+                inBS.Extend(fsize);
+
+                fseek(source, 0, SEEK_SET);
+
+                sts = ReadBitStreamData(&inBS, source);
+                MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+                inBS.DataFlag = MFX_BITSTREAM_COMPLETE_FRAME;
+                fclose(source);
+
                 for (int i = 0; i < numFrameSets; ++i)
                 {
+                    inBS.DataLength += inBS.DataOffset;
+                    inBS.DataOffset = 0;
                     mfxBitstream* output = nullptr;
-
-                    FILE* source = nullptr;
-                    format = data_location + "\\" + img_file_format;
-                    snprintf(str_src_buf, sizeof(str_src_buf), format.c_str(), i + 1, d, c);
-                    source = fopen(str_src_buf, "rb");
-                    fseek(source, 0, SEEK_END);
-                    auto fsize = ftell(source);
-
-                    inBS.Extend(fsize);
-
-                    fseek(source, 0, SEEK_SET);
-
-                    sts = ReadBitStreamData(&inBS, source);
-                    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
-                    inBS.DataFlag = MFX_BITSTREAM_COMPLETE_FRAME;
-                    fclose(source);
 
                     output = transcoder->Process(&inBS, outBS);
                     
